@@ -48,8 +48,9 @@ export default class PuzzleMake extends React.Component {
         break;
       case 3:
         answer = num1 * num2;
-      default:
-        break;
+      break;
+      default: 
+      break;
     }
     this.setState({
       answer: answer,
@@ -138,10 +139,7 @@ export default class PuzzleMake extends React.Component {
                   puzzleShow: false,
                 });
               } else {
-                this.dismiss("stop")
-                // {
-                //   <this.SnoozeButton />;
-                // }
+                this.dismiss("snooze");
               }
             }}
           >
@@ -150,11 +148,9 @@ export default class PuzzleMake extends React.Component {
         </View>
       );
     } else {
-      this.dismiss("snooze")
+      this.dismiss("stop");
 
-      // {
-      //   <this.StopButton />;
-      // }
+      return null;
     }
   }
 }
