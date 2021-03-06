@@ -14,12 +14,11 @@ import {
   TouchableWithoutFeedback,
   Image,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import {Picker} from '@react-native-picker/picker';
-import Checkbox from "expo-checkbox";
 import AsyncStorage from "@react-native-community/async-storage";
 import { ListItem, Icon } from "react-native-elements";
 import PuzzleMake from "./PuzzleMake";
+import Checkbox from "expo-checkbox";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 export default class Clock extends Component {
   constructor() {
     super();
@@ -41,6 +40,8 @@ export default class Clock extends Component {
       showModal: false,
       showTimepicker: false,
       current_time: new Date().getTime(),
+      selected_index: 0,
+      edit: false,
     };
     this.handleChildUnmount = this.handleChildUnmount.bind(this);
     //  this.handleTimePicker = this.handleTimePicker.bind(this);
@@ -98,6 +99,7 @@ export default class Clock extends Component {
       current_month: current_month_text,
     });
   }
+  
   componentWillUnmount() {
     if (this.state.showPuzzle) {
       this.createSnooze("snooze");
@@ -109,14 +111,18 @@ export default class Clock extends Component {
   createSnooze = (state) => {
     if (state === "snooze") {
       if (this.state.current_min + 5 >= 60) {
-        var time =
-          this.state.current_hour + 1 + ":" + this.state.current_min + 5 - 60;
+        var hour = this.state.current_hour + 1;
+        var min = this.state.current_min + 5 - 60;
       } else {
-        var time = this.state.current_hour + ":" + this.state.current_min + 5;
+        var hour = this.state.current_hour;
+        var min = this.state.current_min + 5;
       }
-
+      time = hour < 10 ? "0" + hour : hour + ":" + min < 10 ? "0" + min : min;
       this.newAlarm(time, true);
     }
+
+    console.log(time);
+
     this.deactivateAlarm();
   };
   deactivateAlarm() {
@@ -128,7 +134,7 @@ export default class Clock extends Component {
       if (!item.rep) {
         temp_alarm.forEach((i) => {
           if (item.time == i.time && item.key == i.key) {
-            item.active = false;
+            i.active = false;
           }
         });
 
@@ -141,8 +147,8 @@ export default class Clock extends Component {
   }
   componentDidMount() {
     this.interval1 = setInterval(() => this.getTime(), 1000);
-    this.interval2 = setInterval(() => this.getAlarm(), 1000);
-    this.interval3 = setInterval(() => this.checkAlarm(), 1000);
+    this.interval2 = setInterval(() => this.getAlarm(), 5000);
+    this.interval3 = setInterval(() => this.checkAlarm(), 10000);
   }
 
   deleteTemp() {
@@ -158,13 +164,14 @@ export default class Clock extends Component {
         this.setState({
           alarms: temp_alarm,
         });
-        console.log(this.state.alarms);
         this.updateAlarm();
       }
     }
   }
   newAlarm(data, temp) {
-    var time = data.splice(11, 5);
+    var time = data;
+
+    console.log(time);
     var new_key = (Math.random() * 16).toString(16);
     var new_alarm = {
       key: new_key,
@@ -187,13 +194,12 @@ export default class Clock extends Component {
     this.setState({
       add_alarm: new_alarm,
     });
-    this.storeAlarm(this.state.add_alarm);
+    this.storeAlarm();
   }
-  storeAlarm = async (obj) => {
-    console.log(obj);
+  storeAlarm = async () => {
     AsyncStorage.getItem("all_alarms").then((item) => {
       item = item == null ? [] : JSON.parse(item);
-
+      var obj = this.state.add_alarm;
       item.push(obj);
 
       return AsyncStorage.setItem("all_alarms", JSON.stringify(item));
@@ -205,9 +211,8 @@ export default class Clock extends Component {
     return AsyncStorage.setItem("all_alarms", JSON.stringify(item));
   };
   clearAlarm = async () => {
-    AsyncStorage.removeItem("all_alarms");
+    await AsyncStorage.removeItem("all_alarms");
     this.getAlarm();
-    console.log(this.state.alarms);
   };
   checkAlarm() {
     var current_day = this.state.current_day;
@@ -220,11 +225,18 @@ export default class Clock extends Component {
         ? "0" + this.state.current_min
         : this.state.current_min;
     var time = current_hour + ":" + current_min;
+    console.log(time);
     var alarms = this.state.alarms;
     alarms.forEach((i) => {
-      console.log(i);
-      if (i.days[current_day]) {
-        if (i.time === time && i.active == true) {
+      if (i.time === time && i.active == true) {
+        if (i.rep) {
+          if (i.days[current_day]) {
+            this.setState({
+              showPuzzle: true,
+              currentAlarm: i,
+            });
+          }
+        } else {
           this.setState({
             showPuzzle: true,
             currentAlarm: i,
@@ -252,16 +264,55 @@ export default class Clock extends Component {
       });
     });
   };
-
   Alarms = () => {
     return (
       <View style={styles.container}>
         <ScrollView>
           {this.state.alarms.map((item, index) => {
-            return item.temp != true && item != undefined ? (
-              <View>
-                <ListItem key={item.key} bottomDivider>
-                  <Text>{item.time} </Text>
+            return item.temp && item != undefined ? (
+              <View style={{ justifyContent: "flex-end" }}>
+                <ListItem key={index} bottomDivider>
+                  <TouchableOpacity
+                    onPress={() => {
+                      this.setState({
+                        selected_index: index,
+                      });
+                      this.setState({
+                        edit: true,
+                      });
+                    }}
+                  >
+                    <Text style={{ fontSize: 30 }}>{item.time} </Text>
+                  </TouchableOpacity>
+
+                  <DateTimePickerModal
+                    isVisible={this.state.edit}
+                    mode="time"
+                    is24Hour={true}
+                    value={this.state.alarms[this.state.selected_index]}
+                    display="default"
+                    onConfirm={(value) => {
+                      var hours = value.getHours();
+                      hours = hours < 10 ? "0" + hours : hours;
+                      var minutes = value.getMinutes();
+                      minutes = minutes < 10 ? "0" + minutes : minutes;
+                      var time = hours + ":" + minutes;
+                      var temp_alarm = this.state.alarms;
+                      var index = this.state.selected_index;
+                      temp_alarm[index].time = time;
+                      if (time != undefined) {
+                        this.setState({
+                          alarms: temp_alarm,
+                          edit: false,
+                        });
+                      }
+                    }}
+                    onCancel={() => {
+                      this.setState({
+                        edit: false,
+                      });
+                    }}
+                  />
 
                   <Switch
                     trackColor={{ false: "#767577", true: "#81b0ff" }}
@@ -285,7 +336,6 @@ export default class Clock extends Component {
                       this.setState({
                         alarms: temp_alarm,
                       });
-                      console.log(this.state.alarms);
                       this.updateAlarm();
                     }}
                   >
@@ -298,201 +348,362 @@ export default class Clock extends Component {
                     onPress={() => {
                       this.setState({
                         showModal: true,
+                        selected_index: index,
                       });
                     }}
                   >
                     <Image
-                      source={require("../assets/repeat.png")}
+                      source={
+                        item.rep
+                          ? require("../assets/repeat1.png")
+                          : require("../assets/repeat.png")
+                      }
                       style={{ width: 50, height: 50 }}
                     />
                   </TouchableOpacity>
-                  <Modal
-                    animationType="slide"
-                    transparent={true}
+                  <View
                     style={{
-                      width: "100%",
-                      alignSelf: "center",
-                      height: "100%",
-                      justifyContent: "flex-start",
-                      backgroundColor: "green",
-                    }}
-                    visible={this.state.showModal}
-                    onRequestClose={() => {
-                      alert("Modal has been closed.");
+                      backgroundColor: "lightblue",
+                      borderRadius: 25,
                     }}
                   >
-                    <TouchableWithoutFeedback
-                      onPress={() => {
-                        this.setState({ showModal: false });
+                    <Modal
+                      animationType="none"
+                      transparent={true}
+                      style={{
+                        width: "50%",
+                        alignSelf: "right",
+                        height: "30%",
+                        justifySelf: "flex-end",
+                        backgroundColor: "lightblue",
+                        flexWrap: "wrap",
+                        justifyContent: "space-evenly",
+                        borderRadius: 25,
+                        color: "white",
+                      }}
+                      collapsable={true}
+                      visible={this.state.showModal}
+                      onRequestClose={() => {
+                        alert("Modal has been closed.");
                       }}
                     >
-                      <View style={{ backgroundColor: "red", flex: 1 }}>
-                        <Text>Daily</Text>
-                        <Switch
-                          value={item.daily}
-                          trackColor={{ false: "#767577", true: "#81b0ff" }}
-                          thumbColor={item.daily ? "#f5dd4b" : "#f4f3f4"}
-                          onValueChange={() => {
-                            var i = index;
-                            var temp_alarm = this.state.alarms;
-                            temp_alarm[i].daily = !item.daily;
-
-                            if (item.daily) {
-                              temp_alarm[i].days.Monday = true;
-                              temp_alarm[i].days.Tuesday = true;
-                              temp_alarm[i].days.Wednesday = true;
-                              temp_alarm[i].days.Thursday = true;
-                              temp_alarm[i].days.Friday = true;
-                              temp_alarm[i].days.Saturday = true;
-                              temp_alarm[i].days.Sunday = true;
-                            } else {
-                              temp_alarm[i].days.Monday = false;
-                              temp_alarm[i].days.Tuesday = false;
-                              temp_alarm[i].days.Wednesday = false;
-                              temp_alarm[i].days.Thursday = false;
-                              temp_alarm[i].days.Friday = false;
-                              temp_alarm[i].days.Saturday = false;
-                              temp_alarm[i].days.Sunday = false;
-                            }
-                            this.setState({
-                              alarms: temp_alarm,
-                            });
-                            this.updateAlarm();
+                      <TouchableWithoutFeedback
+                        onPress={() => {
+                          this.setState({ showModal: false });
+                        }}
+                      >
+                        <View
+                          style={{
+                            backgroundColor: "lightblue",
+                            borderRadius: 25,
+                            justifySelf: "flex-end",
+                            height: "30%",
+                            width: "50%",
+                            justifyItem: "space-between",
+                            alignItems: "space-between",
                           }}
-                        />
-                        <View style={{ flexDirection: "row" }}>
-                          <Text>Monday</Text>
-                          <Checkbox
-                            value={item.days.Monday}
-                            onValueChange={() => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Monday = !item.days.Monday;
-                              !temp_alarm[i].days.Monday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                        >
+                          <View
+                            style={{
+                              height: "15%",
+                              justifySelf: "flex-start",
+                              backgroundColor: "lightblue",
+                              flexWrap: "wrap",
+                              borderRadius: 25,
 
-                              console.log(temp_alarm[i].days.Monday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
+                              justifyContent: "space-evenly",
                             }}
-                          />
-                          <Text>Tuesday</Text>
-                          <Checkbox
-                            value={item.days.Tuesday}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Tuesday = value;
-                              !temp_alarm[i].days.Tuesday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                          >
+                            <Text>Daily</Text>
+                            <Switch
+                              value={
+                                this.state.alarms[this.state.selected_index]
+                                  .daily
+                              }
+                              trackColor={{ false: "#767577", true: "#81b0ff" }}
+                              thumbColor={
+                                this.state.alarms[this.state.selected_index]
+                                  .daily
+                                  ? "#f5dd4b"
+                                  : "#f4f3f4"
+                              }
+                              onValueChange={() => {
+                                var i = this.state.selected_index;
+                                var temp_alarm = this.state.alarms;
+                                temp_alarm[i].daily = !this.state.alarms[
+                                  this.state.selected_index
+                                ].daily;
 
-                              console.log(temp_alarm[i].days.Tuesday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
-                            }}
-                          />
+                                if (
+                                  this.state.alarms[this.state.selected_index]
+                                ) {
+                                  temp_alarm[i].days.Monday = true;
+                                  temp_alarm[i].days.Tuesday = true;
+                                  temp_alarm[i].days.Wednesday = true;
+                                  temp_alarm[i].days.Thursday = true;
+                                  temp_alarm[i].days.Friday = true;
+                                  temp_alarm[i].days.Saturday = true;
+                                  temp_alarm[i].days.Sunday = true;
+                                  temp_alarm[i].active = true;
+                                  temp_alarm[i].rep = true;
+                                } else {
+                                  temp_alarm[i].days.Monday = false;
+                                  temp_alarm[i].days.Tuesday = false;
+                                  temp_alarm[i].days.Wednesday = false;
+                                  temp_alarm[i].days.Thursday = false;
+                                  temp_alarm[i].days.Friday = false;
+                                  temp_alarm[i].days.Saturday = false;
+                                  temp_alarm[i].days.Sunday = false;
+                                  temp_alarm[i].rep = false;
+                                }
+                                this.setState({
+                                  alarms: temp_alarm,
+                                });
+                                this.updateAlarm();
+                              }}
+                            />
+                          </View>
+                          <View
+                            style={{
+                              alignSelf: "center",
+                              height: "70%",
+                              justifySelf: "flex-end",
+                              backgroundColor: "lightblue",
+                              borderRadius: 25,
 
-                          <Text>Wednesday</Text>
-                          <Checkbox
-                            value={item.days.Wednesday}
-                            onPress={() => {
-                              item.days.Wednesday = !item.days.Wednesday;
+                              flexWrap: "wrap",
+                              justifyContent: "space-between",
+                              flexDirection: "row",
                             }}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Wednesday = value;
-                              !temp_alarm[i].days.Wednesday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                          >
+                            <View>
+                              <Text>Monday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Monday
+                                }
+                                onValueChange={() => {
+                                  var i = this.state.selected_index;
 
-                              console.log(temp_alarm[i].days.Wednesday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
-                            }}
-                          />
-                          <Text>Thursday</Text>
-                          <Checkbox
-                            value={item.days.Thursday}
-                            onPress={() => {
-                              item.days.Wednesday = !item.days.Thursday;
-                            }}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Thursday = value;
-                              !temp_alarm[i].days.Thursday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Monday = !item.days.Monday;
+                                  if (!temp_alarm[i].days.Monday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
 
-                              console.log(temp_alarm[i].days.Thursday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
-                            }}
-                          />
-                          <Text>Friday</Text>
-                          <Checkbox
-                            value={item.days.Friday}
-                            onPress={() => {
-                              item.days.Friday = !item.days.Friday;
-                            }}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Friday = value;
-                              !temp_alarm[i].days.Friday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Tuesday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Tuesday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
 
-                              console.log(temp_alarm[i].days.Friday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
-                            }}
-                          />
-                          <Text>Saturday</Text>
-                          <Checkbox
-                            value={item.days.Saturday}
-                            onPress={() => {
-                              item.days.Saturday = !item.days.Saturday;
-                            }}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Saturday = value;
-                              !temp_alarm[i].days.Saturday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Tuesday = value;
+                                  if (!temp_alarm[i].days.Tuesday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Wednesday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Wednesday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
 
-                              console.log(temp_alarm[i].days.Saturday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
-                            }}
-                          />
-                          <Text>Sunday</Text>
-                          <Checkbox
-                            value={item.days.Sunday}
-                            onPress={() => {
-                              item.days.Sunday = !item.days.Sunday;
-                            }}
-                            onValueChange={(value) => {
-                              var i = index;
-                              var temp_alarm = this.state.alarms;
-                              temp_alarm[i].days.Sunday = value;
-                              !temp_alarm[i].days.Sunday
-                                ? (temp_alarm[i].daily = false)
-                                : null;
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Wednesday = value;
+                                  if (!temp_alarm[i].days.Wednesday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
 
-                              console.log(temp_alarm[i].days.Sunday);
-                              this.setState({ alarms: temp_alarm });
-                              this.updateAlarm();
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Thursday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Thursday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
+
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Thursday = value;
+                                  if (!temp_alarm[i].days.Thursday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
+
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Friday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Friday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
+
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Friday = value;
+                                  if (!temp_alarm[i].days.Friday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
+
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Saturday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Saturday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
+
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Saturday = value;
+                                  if (!temp_alarm[i].days.Saturday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
+
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                            <View>
+                              <Text>Sunday</Text>
+                              <Checkbox
+                                value={
+                                  this.state.alarms[this.state.selected_index]
+                                    .days.Sunday
+                                }
+                                onValueChange={(value) => {
+                                  var i = this.state.selected_index;
+
+                                  var temp_alarm = this.state.alarms;
+                                  temp_alarm[i].days.Sunday = value;
+                                  if (!temp_alarm[i].days.Sunday) {
+                                    temp_alarm[i].daily = false;
+                                  } else {
+                                    temp_alarm[i].active = true;
+                                    temp_alarm[i].rep = true;
+                                  }
+                                  this.setState({ alarms: temp_alarm });
+                                  this.updateAlarm();
+                                }}
+                              />
+                            </View>
+                          </View>
+                          <View
+                            style={{
+                              height: "15%",
+                              justifySelf: "flex-end",
+                              borderRadius: 25,
+                              alignSelf: "flex-end",
+                              backgroundColor: "lightblue",
+                              flexWrap: "wrap",
+                              justifyContent: "space-evenly",
                             }}
-                          />
+                          >
+                            <TouchableOpacity
+                              onPress={() => {
+                                var item = this.state.alarms[
+                                  this.state.selected_index
+                                ];
+                                for (i in item.days) {
+                                  if (i === false) {
+                                    item.daily = false;
+                                  } else {
+                                    item.rep = true;
+
+                                    item.active = true;
+                                  }
+                                }
+                                // if (item.daily == false) {
+                                //   item.rep = false;
+                                // }
+                                temp_alarm = this.state.alarms;
+                                var index = this.state.selected_index;
+                                temp_alarm[index].daily = item.daily;
+                                temp_alarm[index].active = item.active;
+
+                                this.setState({
+                                  showModal: false,
+                                  alarms: temp_alarm,
+                                });
+                                this.updateAlarm();
+                              }}
+                              style={{
+                                borderRadius: 50,
+                                backgroundColor: "blue",
+                                width: 60,
+                                height: 30,
+                                justifySelf: "flex-end",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  alignItems: "center",
+                                  alignSelf: "center",
+                                }}
+                              >
+                                OK
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                    </TouchableWithoutFeedback>
-                  </Modal>
+                      </TouchableWithoutFeedback>
+                    </Modal>
+                  </View>
                 </ListItem>
               </View>
             ) : null;
@@ -501,7 +712,7 @@ export default class Clock extends Component {
       </View>
     );
   };
-
+  
   TimeDisplay = () => {
     return (
       <View>
@@ -548,31 +759,43 @@ export default class Clock extends Component {
               }}
             >
               <Image
-                source={require("../assets/clock.png")}
+                source={
+                  this.state.showTimepicker
+                    ? require("../assets/clock.png")
+                    : require("../assets/clock1.png")
+                }
                 style={{ width: 50, height: 50 }}
               />
             </TouchableOpacity>
           </View>
-          {this.state.showTimepicker ? (
-            <DateTimePicker
-              mode="time"
-              is24Hour={true}
-              value={this.state.current_time}
-              display="default"
-              onChange={(event, time) => {
+          <DateTimePickerModal
+            isVisible={this.state.showTimepicker}
+            mode="time"
+            is24Hour={true}
+            value={this.state.current_time}
+            display="default"
+            onConfirm={(value) => {
+              var hours = value.getHours();
+              hours = hours < 10 ? "0" + hours : hours;
+              var minutes = value.getMinutes();
+              minutes = minutes < 10 ? "0" + minutes : minutes;
+              var time = hours + ":" + minutes;
+              console.log(time);
+              if (time != undefined) {
+                this.setState({
+                  current_time: time,
+                  showTimepicker: false,
+                });
                 console.log(time);
-
-                if (time != undefined) {
-                  this.setState({
-                    current_time: time,
-                    showTimepicker: false,
-                  });
-                  console.log(time);
-                  this.newAlarm(time, false);
-                } 
-              }}
-            />
-          ) : null}
+                this.newAlarm(time, false);
+              }
+            }}
+            onCancel={() => {
+              this.setState({
+                showTimepicker: false,
+              });
+            }}
+          />
 
           {<this.Alarms />}
 

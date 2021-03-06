@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  ScrollView,
 } from "react-native";
 import { Audio } from "expo-av";
 
@@ -48,27 +50,58 @@ export default class PuzzleMake extends React.Component {
         break;
       case 3:
         answer = num1 * num2;
-      break;
-      default: 
-      break;
+        break;
+      default:
+        break;
     }
     this.setState({
       answer: answer,
     });
-    console.log(answer + " " + this.state.givenAnswer);
+    //console.log(answer + " " + this.state.givenAnswer);
   }
+  _onPlaybackStatusUpdate = (playbackStatus) => {
+    if (!playbackStatus.isLoaded) {
+      if (playbackStatus.error) {
+        console.log(
+          `Encountered a fatal error during playback: ${playbackStatus.error}`
+        );
+        // Send Expo team the error on Slack or the forums so we can help you debug!
+      }
+    } else {
+      console.log("loaded");
+
+      if (playbackStatus.isPlaying) {
+      } else {
+        // Update your UI for the paused state
+      }
+
+      if (playbackStatus.isBuffering) {
+        // Update your UI for the buffering state
+      }
+
+      if (playbackStatus.didJustFinish && !playbackStatus.isLooping) {
+        if (!this.state.playSound) {
+          playbackStatus.setIsLoopingAsync(true);
+        }
+      }
+
+      // etc
+    }
+  };
+
   playSound = async () => {
-    const alarmSound = new Audio.Sound();
+    const alarmSound = await new Audio.Sound();
     try {
       await alarmSound.loadAsync(
-        "http://soundbible.com/mp3/Buzzer-SoundBible.com-188422102.mp3"
+        require("../assets/Loud_Alarm_Clock_Buzzer.mp3")
       );
-      if (this.state.playSound) {
-        alarmSound.setIsLoopingAsync = true;
-        await alarmSound.playAsync();
-      } else {
-        alarmSound.setIsLoopingAsync = false;
+      await alarmSound.playAsync();
+      alarmSound.setIsLoopingAsync(true);
+      //alarmSound.setOnPlaybackStatusUpdate(this._onPlaybackStatusUpdate);
 
+      if (!this.state.playSound) {
+        alarmSound.setIsLoopingAsync(false);
+        alarmSound.stopAsync();
         await alarmSound.unloadAsync();
       }
     } catch (error) {
@@ -115,35 +148,61 @@ export default class PuzzleMake extends React.Component {
         this.playSound();
       }
       return (
-        <View>
-          <Text>
+        <View
+          style={{
+            height: "30%",
+            width: "40%",
+            backgroundColor: "lightblue",
+            borderRadius: 15,
+          }}
+        >
+          <Text style={{ fontSize: 30 }}>
             {this.state.num1}
             {this.state.operator}
             {this.state.num2}
           </Text>
+
           <TextInput
+            style={{
+              width: 100,
+              height: 40,
+              color: "black",
+              backgroundColor: "lightgrey",
+              borderColor: "grey",
+              borderRadius: 2,
+              fontSize: 25,
+            }}
             keyboardType="number-pad"
             onChangeText={(text) => {
-              this.updateAnswer(text);
+              this.setState({
+                givenAnswer: text,
+              });
             }}
             value={this.state.givenAnswer}
             placeholder={this.state.givenAnswer}
           />
           <TouchableOpacity
+            style={{
+              width: 100,
+              height: 30,
+              backgroundColor: "blue",
+              borderColor: "grey",
+              borderRadius: 25,
+            }}
             onPress={() => {
-              console.log(this.state.givenAnswer);
-
-              if (this.state.answer == this.state.givenAnswer) {
-                this.setState({
-                  playSound: false,
-                  puzzleShow: false,
-                });
-              } else {
-                this.dismiss("snooze");
-              }
+              this.state.answer == this.state.givenAnswer
+                ? this.setState({
+                    playSound: false,
+                    puzzleShow: false,
+                  })
+                : (this.setState({
+                    num1: Math.ceil(Math.random() * 55),
+                    num2: Math.ceil(Math.random() * 55),
+                  }),
+                  this.puzzle());
             }}
           >
-            <Text>Enter</Text>
+            <Text style={{ fontSize: 20 }}>Enter</Text>
           </TouchableOpacity>
         </View>
       );
